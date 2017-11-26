@@ -9,6 +9,8 @@ Follow steps to install *esptool* and *micropython for ESP32*.
 
 Then...
 
+* clone me, oh please, clone me!
+
 ```bash
 $ git clone git@github.com/tiagocoutinho/us2n
 ```
@@ -31,7 +33,7 @@ with open('serial.conf', 'w') as f:
 
 * Load `main.py` to your ESP32
 
-* Load ``
+* Load `us2n.py` to your ESP32
 
 * Connect to your ESP32
 
