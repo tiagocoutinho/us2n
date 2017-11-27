@@ -1,44 +1,5 @@
 # us2n.py
 
-"""
-Example of us2n.json:
-
-d = \
-{
-    "name": "SuperESP32",
-    "verbose": False,
-    "wlan": {
-        "sta": {
-            "essid": "Freebox-62E559_EXT",
-            "password": "focarii58-satiantis-aggeum%3-hispanam?8",
-        },
-    },
-    "bridges": [ {
-        "tcp": {
-            "bind": ["", 8000],
-        },
-        "uart": {
-            "port": 1,
-            "baudrate": 9600,
-            "bits": 8,
-            "parity": None,
-            "stop": 1,
-        },
-    }, {
-        "tcp": {
-            "bind": ["", 8001],
-        },
-        "uart": {
-            "port": 2,
-            "baudrate": 9600,
-            "bits": 8,
-            "parity": None,
-            "stop": 1,
-        },
-    },
-}
-"""
-
 import os
 import json
 import time

@@ -1,15 +1,6 @@
 import socket
 import network
 
-def activate_home_network():
-    sta_if = network.WLAN(network.STA_IF)
-    if not sta_if.active():
-        sta_if.active(True)
-        sta_if.connect('Freebox-62E559_EXT',
-                       'focarii58-satiantis-aggeum%3-hispanam?8')
-    return sta_if
-
-
 def download(addr, src='main.py', dest=None, timeout=1):
     import socket
     try:
@@ -30,19 +21,18 @@ def download(addr, src='main.py', dest=None, timeout=1):
     finally:
         s.close()
 
+
 def main():
     print(50*'=')
     print('Welcome to Tiago\'s ESP32 device\n')
-    print('Activating home network... ', end='', flush=True)
+    print('Starting UART<->TCP bridge server...')
     try:
-        sta = activate_home_network()
-        if sta.active():
-            print('[DONE]')
-        else:
-            print('[FAILED]')
-    except Exception:
-        print('[ERROR]')
-    print(50*'-')
+        import us2n
+    except:
+        print('Failed to import us2n')
+    else:
+        server = us2n.server()
+        server.serve_forever()
 
 
 if __name__ == '__main__':
