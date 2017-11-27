@@ -1,7 +1,7 @@
-# micropython ESP32 serial to tcp server
+# micropython ESP32 UART to TCP bridge
 
 A micropython server running on an ESP32 which acts as a bridge
-between UART and TCP.
+between UART and TCP (LAN/WLAN).
 
 ## Installation
 
@@ -15,41 +15,64 @@ Then...
 $ git clone git@github.com/tiagocoutinho/us2n
 ```
 
-* Create a file called `serial.conf` with a json configuration of your UART
-  (You can skip this step if you use the default configuration):
+* Create a file called `us2n.json` with a json configuration:
 
 ```python
 
 import json
 
-# This is actually the default configuration if the board has no config
-conf = dict(port=1, baudrate=9600, bits=8, parity=None, stop=1)
-with open('serial.conf', 'w') as f:
-    json.dump(conf, f)
+config = {
+    "name": "SuperESP32",
+    "verbose": False,
+    "wlan": {
+        "sta": {
+            "essid": "<name of your access point>",
+            "password": "<password of your access point>",
+        },
+    },
+    "bridges": [
+        {
+            "tcp": {
+                "bind": ["", 8000],
+            },
+            "uart": {
+                "port": 1,
+                "baudrate": 9600,
+                "bits": 8,
+                "parity": None,
+                "stop": 1,
+            },
+        },
+    ],
+}
+
+with open('us2n.json', 'w') as f:
+    json.dump(config, f)
 
 ```
 
-* Load the newly created `serial.conf` to your ESP32
+* Include in your `main.py`:
 
-* Load `main.py` to your ESP32
+```python
+import us2n
+server = us2n.server()
+server.serve_forever()
+```
+
+* Load the newly created `us2n.json` to your ESP32
 
 * Load `us2n.py` to your ESP32
 
-* Connect to your ESP32
+* Load `main.py` to your ESP32
 
-```bash
-$ miniterm.py /dev/ttyUSB0 115200
-```
+* Press reset
 
-```python
->>> import us2n
->>> server = us2n.S2NServer()
->>> server.serve_forever()
-```
+The server board should be ready to accept requests in a few seconds.
+
 
 ## Usage
 
-If, for example, your ESP32 UART is connected to a SCPI device,
+Now, if, for example, your ESP32 UART is connected to a SCPI device,
 you can, from any PC:
 
 ```bash
