@@ -1,32 +1,159 @@
 # us2n.py
 
+"""
+Example of us2n.json:
+
+d = \
+{
+    "name": "SuperESP32",
+    "verbose": False,
+    "wlan": {
+        "sta": {
+            "essid": "Freebox-62E559_EXT",
+            "password": "focarii58-satiantis-aggeum%3-hispanam?8",
+        },
+    },
+    "bridges": [ {
+        "tcp": {
+            "bind": ["", 8000],
+        },
+        "uart": {
+            "port": 1,
+            "baudrate": 9600,
+            "bits": 8,
+            "parity": None,
+            "stop": 1,
+        },
+    }, {
+        "tcp": {
+            "bind": ["", 8001],
+        },
+        "uart": {
+            "port": 2,
+            "baudrate": 9600,
+            "bits": 8,
+            "parity": None,
+            "stop": 1,
+        },
+    },
+}
+"""
+
 import os
+import json
+import time
 import select
 import socket
 import machine
+import network
 
 
-def _UART(port=1, baudrate=9600, bits=8, parity=None, stop=1):
-    uart = machine.UART(port, baudrate)
-    uart.init(baudrate, bits=bits, parity=parity, stop=stop)
+def read_config(filename='us2n.json', obj=None, default=None):
+    with open(filename, 'r') as f:
+        config = json.load(f)
+        if obj is None:
+            return config
+        return config.get(obj, default)
+
+
+def parse_bind_address(addr, default=None):
+    if addr is None:
+        return default
+    args = addr
+    if not isinstance(args, (list, tuple)):
+        args = addr.rsplit(':', 1)
+    host = '' if len(args) == 1 or args[0] == '0' else args[0]
+    port = int(args[1])
+    return host, port
+
+
+def UART(config):
+    config = dict(config)
+    port = config.pop('port')
+    uart = machine.UART(port)
+    uart.init(**config)
     return uart
 
 
-def UART():
-    import ujson
-    kwargs = dict(port=1, baudrate=9600, bits=8, parity=None, stop=1)
-    try:
-        with open('serial.conf', 'r') as conf:
-            kwargs.update(json.load(conf))
-    except:
-        print("Failed to load 'serial.conf'. Falling back to default config")
-    return _UART(**kwargs)
+class Bridge:
+
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.uart = None
+        self.uart_port = config['uart']['port']
+        self.tcp = None
+        self.address = parse_bind_address(config['tcp']['bind'])
+        self.bind_port = self.address[1]
+        self.client = None
+        self.client_address = None
+
+    def bind(self):
+        tcp = socket.socket()
+        tcp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    #    tcp.setblocking(False)
+        tcp.bind(self.address)
+        tcp.listen(5)
+        print('Bridge listening at TCP({0}) for UART({1})'
+              .format(self.bind_port, self.uart_port))
+        self.tcp = tcp
+        return tcp
+
+    def fill(self, fds):
+        if self.uart is not None:
+            fds.append(self.uart)
+        if self.tcp is not None:
+            fds.append(self.tcp)
+        if self.client is not None:
+            fds.append(self.client)
+        return fds
+
+    def handle(self, fd):
+        if fd == self.tcp:
+            self.close_client()
+            self.open_client()
+        elif fd == self.client:
+            data = self.client.recv(4096)
+            if data:
+                print('TCP({0})->UART({1}) {2}'.format(self.bind_port,
+                                                       self.uart_port, data))
+                self.uart.write(data)
+            else:
+                print('Client ', self.client_address, ' disconnected')
+                self.close_client()
+        elif fd == self.uart:
+            data = serial_line.read()
+            print('UART({0})->TCP({1}) {2}'.format(self.uart_port,
+                                                   self.bind_port, data))
+            self.client.sendall(data)
+
+    def close_client(self):
+        if self.client is not None:
+            print('Closing client ', self.client_address)
+            self.client.close()
+            self.client = None
+            self.client_address = None
+        if self.uart is not None:
+#            self.uart.deinit()
+            self.uart = None
+
+    def open_client(self):
+        self.uart = UART(self.config['uart'])
+        self.client, self.client_address = self.tcp.accept()
+        print('Accepted connection from ', self.client_address)
+
+    def close(self):
+        self.close_client()
+        if self.tcp is not None:
+            print('Closing TCP server {0}...'.format(self.address))
+            self.tcp.close()
+            self.tcp = None
 
 
 class S2NServer:
 
-    def __init__(self, bind=('', 8000)):
-        self.bind = bind
+    def __init__(self, config):
+        self.config = config
 
     def serve_forever(self):
         try:
@@ -34,50 +161,83 @@ class S2NServer:
         except KeyboardInterrupt:
             print('Ctrl-C pressed. Bailing out')
 
-    def _serve_forever(self):
-        tcp_server = socket.socket()
-        tcp_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    #    tcp_server.setblocking(False)
-        tcp_server.bind(self.bind)
-        tcp_server.listen(5)
-        print('server listening at ', self.bind)
+    def bind(self):
+        bridges = []
+        for config in self.config['bridges']:
+            bridge = Bridge(config)
+            bridge.bind()
+            bridges.append(bridge)
+        return bridges
 
-        fds = [tcp_server]
-        serial_line = None
-        tcp_client, addr_client = None, None
+    def _serve_forever(self):
+        bridges = self.bind()
 
         try:
             while True:
+                fds = []
+                for bridge in bridges:
+                    bridge.fill(fds)
                 rlist, _, xlist = select.select(fds, (), fds)
                 if xlist:
-                    print('errors. bailing out')
+                    print('Errors. bailing out')
                     continue
                 for fd in rlist:
-                    if fd == tcp_server:
-                        if tcp_client:
-                            print('Closing previous client ', addr_client)
-                            tcp_client.close()
-                        if serial_line:
-                            serial_line.deinit()
-                        tcp_client, addr_client = tcp_server.accept()
-                        print('new connection from ', addr_client)
-                        serial_line = UART()
-                        fds = [tcp_server, tcp_client, serial_line]
-                        break
-                    elif fd == serial_line:
-                        data = serial_line.read()
-                        if tcp_client:
-                            print('UART->TCP %r' % data)
-                            tcp_client.sendall(data)
-                    elif fd == tcp_client:
-                        data = tcp_client.recv(4096)
-                        if data:
-                            print('TCP->UART %r' % data)
-                            serial_line.write(data)
-                        else:
-                            print('client ', addr_client, ' disconnected')
-                            fds = [tcp_server]
-                            serial_line = None
-                            tcp_client, addr_client = None, None
+                    for bridge in bridges:
+                        bridge.handle(fd)
         finally:
-            tcp_server.close()
+            for bridge in bridges:
+                bridge.close()
+
+
+def config_lan(config):
+    pass
+
+
+def config_wlan(config):
+    if config is None:
+        return None, None
+    return (WLANStation(config.get('sta')),
+            WLANAccessPoint(config.get('ap')))
+
+
+def WLANStation(config):
+    if config is None:
+        return
+    essid = config['essid']
+    password = config['password']
+    sta = network.WLAN(network.STA_IF)
+
+    if not sta.isconnected():
+        sta.active(True)
+        sta.connect(essid, password)
+    while not sta.isconnected():
+        time.sleep_ms(100)
+    print('Wifi station connected as {0}'.format(sta.ifconfig()))
+    return sta
+
+
+def WLANAccessPoint(config):
+    if config is None:
+        return
+    config.setdefault('essid', name)
+    config.setdefault('channel', 11)
+    config.setdefault('authmode',
+                      getattr(network,'AUTH_' +
+                              config.get('authmode', 'OPEN').upper()))
+    config.setdefault('hidden', False)
+    config.setdefault('dhcp_hostname', name)
+    ap = network.WLAN(network.AP_IF)
+    ap.config(**config)
+    return ap
+
+
+def config_network(config):
+    config_lan(config)
+    config_wlan(config)
+
+
+def server(config_filename='us2n.json'):
+    config = read_config(config_filename)
+    name = config.setdefault('name', 'Tiago-ESP32')
+    config_network(config.get('wlan'))
+    return S2NServer(config)
