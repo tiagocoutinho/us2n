@@ -149,18 +149,19 @@ class S2NServer:
                 bridge.close()
 
 
-def config_lan(config):
+def config_lan(config, name):
+    # For a board which has LAN
     pass
 
 
-def config_wlan(config):
+def config_wlan(config, name):
     if config is None:
         return None, None
-    return (WLANStation(config.get('sta')),
-            WLANAccessPoint(config.get('ap')))
+    return (WLANStation(config.get('sta'), name),
+            WLANAccessPoint(config.get('ap'), name))
 
 
-def WLANStation(config):
+def WLANStation(config, name):
     if config is None:
         return
     essid = config['essid']
@@ -170,13 +171,19 @@ def WLANStation(config):
     if not sta.isconnected():
         sta.active(True)
         sta.connect(essid, password)
-    while not sta.isconnected():
-        time.sleep_ms(100)
+        n, ms = 20, 250
+        while not sta.isconnected() and n > 0:
+            time.sleep_ms(ms)
+            n -= 1
+        if not sta.isconnected():
+            print('Failed to connect wifi station after {0}ms. I give up'
+                  .format(n*ms))
+            return sta
     print('Wifi station connected as {0}'.format(sta.ifconfig()))
     return sta
 
 
-def WLANAccessPoint(config):
+def WLANAccessPoint(config, name):
     if config is None:
         return
     config.setdefault('essid', name)
@@ -185,19 +192,32 @@ def WLANAccessPoint(config):
                       getattr(network,'AUTH_' +
                               config.get('authmode', 'OPEN').upper()))
     config.setdefault('hidden', False)
-    config.setdefault('dhcp_hostname', name)
+#    config.setdefault('dhcp_hostname', name)
     ap = network.WLAN(network.AP_IF)
-    ap.config(**config)
+    if not ap.isconnected():
+        ap.active(True)
+        n, ms = 20, 250
+        while not ap.active() and n > 0:
+            time.sleep_ms(ms)
+            n -= 1
+        if not ap.active():
+            print('Failed to activate wifi access point after {0}ms. ' \
+                  'I give up'.format(n*ms))
+            return ap
+
+#    ap.config(**config)
+    print('Wifi {0!r} connected as {1}'.format(ap.config('essid'),
+                                               ap.ifconfig()))
     return ap
 
 
-def config_network(config):
-    config_lan(config)
-    config_wlan(config)
+def config_network(config, name):
+    config_lan(config, name)
+    config_wlan(config, name)
 
 
 def server(config_filename='us2n.json'):
     config = read_config(config_filename)
     name = config.setdefault('name', 'Tiago-ESP32')
-    config_network(config.get('wlan'))
+    config_network(config.get('wlan'), name)
     return S2NServer(config)
