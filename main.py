@@ -22,6 +22,11 @@ def download(addr, src='main.py', dest=None, timeout=1):
         s.close()
 
 
+def cat(fname):
+    with open(fname, 'r') as f:
+        print(f.read())
+
+
 def main():
     print(50*'=')
     print('Welcome to Tiago\'s ESP32 device\n')
