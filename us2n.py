@@ -1,6 +1,5 @@
 # us2n.py
 
-import os
 import json
 import time
 import select
@@ -83,7 +82,7 @@ class Bridge:
                 print('Client ', self.client_address, ' disconnected')
                 self.close_client()
         elif fd == self.uart:
-            data = serial_line.read()
+            data = self.uart.read()
             print('UART({0})->TCP({1}) {2}'.format(self.uart_port,
                                                    self.bind_port, data))
             self.client.sendall(data)
