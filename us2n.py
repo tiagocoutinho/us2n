@@ -7,6 +7,12 @@ import socket
 import machine
 import network
 
+print_ = print
+VERBOSE = 1
+def print(*args, **kwargs):
+    if VERBOSE:
+        print_(*args, **kwargs)
+
 
 def read_config(filename='us2n.json', obj=None, default=None):
     with open(filename, 'r') as f:
@@ -172,12 +178,13 @@ def WLANStation(config, name):
         sta.active(True)
         sta.connect(essid, password)
         n, ms = 20, 250
+        t = n*ms
         while not sta.isconnected() and n > 0:
             time.sleep_ms(ms)
             n -= 1
         if not sta.isconnected():
             print('Failed to connect wifi station after {0}ms. I give up'
-                  .format(n*ms))
+                  .format(t))
             return sta
     print('Wifi station connected as {0}'.format(sta.ifconfig()))
     return sta
@@ -197,12 +204,13 @@ def WLANAccessPoint(config, name):
     if not ap.isconnected():
         ap.active(True)
         n, ms = 20, 250
+        t = n * ms
         while not ap.active() and n > 0:
             time.sleep_ms(ms)
             n -= 1
         if not ap.active():
             print('Failed to activate wifi access point after {0}ms. ' \
-                  'I give up'.format(n*ms))
+                  'I give up'.format(t))
             return ap
 
 #    ap.config(**config)
@@ -216,8 +224,20 @@ def config_network(config, name):
     config_wlan(config, name)
 
 
+def config_verbosity(config):
+    global VERBOSE
+    VERBOSE = config.setdefault('verbose', 1)
+    for bridge in config.get('bridges'):
+        if bridge.get('uart', {}).get('port', None) == 0:
+            VERBOSE = 0
+
+
 def server(config_filename='us2n.json'):
     config = read_config(config_filename)
+    VERBOSE = config.setdefault('verbose', 1)
     name = config.setdefault('name', 'Tiago-ESP32')
+    config_verbosity(config)
+    print(50*'=')
+    print('Welcome to ESP8266/32 serial <-> tcp bridge\n')
     config_network(config.get('wlan'), name)
     return S2NServer(config)
